@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, Mapping
+from typing import Dict, Mapping
 
 import numpy as np
 import pandas as pd
@@ -21,7 +21,7 @@ class StressWeightedGMV:
         forecasts: Mapping[str, Mapping[str, float]],
         covariance: pd.DataFrame,
         stress_level: float,
-    ) -> Dict[str, float]:
+    ) -> Dict[str, object]:
         if covariance.empty:
             raise ValueError("Covariance matrix must not be empty")
         cov = covariance.copy()
@@ -36,13 +36,31 @@ class StressWeightedGMV:
         stress_adjusted /= np.sum(stress_adjusted)
         aggregated = {
             "support_resistance": float(
-                sum(stress_adjusted[i] * forecasts[name]["support_resistance"] for i, name in enumerate(cov.index))
+                sum(
+                    stress_adjusted[i] * forecasts[name]["support_resistance"]
+                    for i, name in enumerate(cov.index)
+                )
             ),
             "direction_score": float(
-                sum(stress_adjusted[i] * forecasts[name]["direction_score"] for i, name in enumerate(cov.index))
+                sum(
+                    stress_adjusted[i] * forecasts[name]["direction_score"]
+                    for i, name in enumerate(cov.index)
+                )
             ),
             "speed": float(
                 sum(stress_adjusted[i] * forecasts[name]["speed"] for i, name in enumerate(cov.index))
             ),
+            "probability": float(
+                sum(stress_adjusted[i] * forecasts[name]["probability"] for i, name in enumerate(cov.index))
+            ),
+            "hurricane_intensity": float(
+                sum(
+                    stress_adjusted[i] * forecasts[name]["hurricane_intensity"]
+                    for i, name in enumerate(cov.index)
+                )
+            ),
+            "weights": {
+                name: float(stress_adjusted[i]) for i, name in enumerate(cov.index)
+            },
         }
         return aggregated

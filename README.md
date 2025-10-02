@@ -30,9 +30,9 @@ hurricane_spy/
    ```
 2. Populate the data bundle expected by the pipeline (see
    `hurricane_spy/data_structures.py` for schema details).
-3. Run the example pipeline:
+3. Run the example pipeline in dry-run mode (no external dependencies):
    ```bash
-   python -m hurricane_spy.scripts.run_pipeline
+   python -m hurricane_spy.scripts.run_pipeline --dry-run
    ```
 
 ## Algorithm Overview
@@ -59,12 +59,25 @@ The implementation follows the structure of the Hurricane SPY specification:
 - **Aggregation** (`aggregation.py`)
   - Stress-weighted global minimum-variance (GMV) blending across timeframes.
   - Conformalized reliability adjustment and Brier score tracking per regime.
+  - Aggregated probability and hurricane intensity metrics for execution logic.
 
 - **Pipeline Orchestration** (`pipeline.py`)
   - Validates inputs, computes per-timeframe forecasts, applies stability
     controls, and aggregates the final predictions.
   - Provides detailed diagnostics of calibration, gating decisions, and
     abstention rationale.
+
+## Trading with Alpaca
+
+The repository ships with an `ExecutionConfig`/`TradingExecutor` pair and a
+companion CLI (`python -m hurricane_spy.scripts.run_pipeline`) that can convert
+aggregate forecasts into Alpaca orders. By default the script falls back to a
+synthetic trading client when credentials are absent, enabling local testing
+without touching live markets.
+
+To connect to Alpaca, set the `ALPACA_API_KEY`/`ALPACA_SECRET_KEY` environment
+variables and rerun the script without `--dry-run`. Detailed instructions and
+recommended CLI flags are provided in [docs/alpaca_setup.md](docs/alpaca_setup.md).
 
 See the inline documentation throughout the codebase for the precise formulas
 and configuration options.
