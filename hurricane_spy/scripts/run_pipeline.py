@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import argparse
+import logging
 from datetime import UTC, datetime
 
 import numpy as np
 import pandas as pd
 
-from hurricane_spy import HurricaneConfig, HurricaneSPY, TimeframeConfig
+from hurricane_spy import (
+    ExecutionConfig,
+    HurricaneConfig,
+    HurricaneSPY,
+    TimeframeConfig,
+    TradingExecutor,
+    get_alpaca_client,
+)
 from hurricane_spy.data_structures import MarketDataBundle
 
 
@@ -81,7 +90,33 @@ def generate_dummy_data(index: pd.DatetimeIndex) -> MarketDataBundle:
     )
 
 
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run the Hurricane SPY pipeline and optionally trade via Alpaca.")
+    parser.add_argument("--dry-run", action="store_true", help="Use the synthetic trading client instead of Alpaca.")
+    parser.add_argument("--symbol", default="SPY", help="Ticker symbol to trade (default: SPY)")
+    parser.add_argument("--base-quantity", type=int, default=10, help="Base order quantity before intensity scaling.")
+    parser.add_argument("--max-position", type=int, default=200, help="Maximum quantity allowed per order.")
+    parser.add_argument("--buy-threshold", type=float, default=0.6, help="Probability threshold for long trades.")
+    parser.add_argument("--sell-threshold", type=float, default=0.4, help="Probability threshold for short trades.")
+    parser.add_argument(
+        "--intensity-multiplier",
+        type=float,
+        default=0.3,
+        help="Multiplier applied to hurricane intensity when scaling order size.",
+    )
+    parser.add_argument(
+        "--alpaca-mode",
+        choices=["paper", "live"],
+        default=None,
+        help="Alpaca environment to target when not running in dry-run mode.",
+    )
+    return parser
+
+
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    args = build_arg_parser().parse_args()
+
     index = pd.date_range(end=datetime.now(UTC), periods=500, freq="min")
     bundle = generate_dummy_data(index)
     config = HurricaneConfig(
@@ -93,11 +128,34 @@ def main() -> None:
     )
     pipeline = HurricaneSPY(config)
     result = pipeline.run(bundle)
-    print("Aggregate Predictions:\n", result["aggregate"])
+
+    aggregate = result["aggregate"]
+    print("Aggregate Predictions:\n", aggregate)
     print("\nPer Timeframe:")
     for name, payload in result["timeframes"].items():
-        print(f"- {name}: signal={payload['direction_signal']}, speed={payload['speed']:.3f}")
+        print(
+            "- {name}: signal={signal}, speed={speed:.3f}, probability={prob:.2f}".format(
+                name=name,
+                signal=payload["direction_signal"],
+                speed=payload["speed"],
+                prob=payload["probability"],
+            )
+        )
     print("\nDiagnostics head:\n", result["diagnostics"]["gating"].head())
+
+    client = get_alpaca_client(dry_run=args.dry_run, mode=args.alpaca_mode)
+    exec_config = ExecutionConfig(
+        symbol=args.symbol,
+        base_quantity=args.base_quantity,
+        max_position=args.max_position,
+        buy_threshold=args.buy_threshold,
+        sell_threshold=args.sell_threshold,
+        intensity_multiplier=args.intensity_multiplier,
+    )
+    executor = TradingExecutor(client, exec_config)
+    decision = executor.decide(aggregate)
+    print(f"\nTrading decision: {decision}")
+    executor.execute(decision)
 
 
 if __name__ == "__main__":
