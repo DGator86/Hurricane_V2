@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import UTC, datetime
+import os
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,7 @@ from hurricane_spy import (
     get_alpaca_client,
 )
 from hurricane_spy.data_structures import MarketDataBundle
+from hurricane_spy.data_sources.unusual_whales import load_market_data_from_unusual_whales
 
 
 def generate_dummy_data(index: pd.DatetimeIndex) -> MarketDataBundle:
@@ -110,6 +112,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Alpaca environment to target when not running in dry-run mode.",
     )
+    parser.add_argument(
+        "--use-synthetic",
+        action="store_true",
+        help="Force the pipeline to use synthetic data instead of Unusual Whales.",
+    )
+    parser.add_argument(
+        "--lookback-minutes",
+        type=int,
+        default=500,
+        help="Number of recent minutes of market data to pull from Unusual Whales.",
+    )
+    parser.add_argument(
+        "--unusual-whales-key",
+        default=None,
+        help="Optional Unusual Whales API key (falls back to UNUSUAL_WHALES_API_KEY).",
+    )
     return parser
 
 
@@ -117,8 +135,29 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     args = build_arg_parser().parse_args()
 
-    index = pd.date_range(end=datetime.now(UTC), periods=500, freq="min")
-    bundle = generate_dummy_data(index)
+    if args.use_synthetic:
+        logging.info("Using synthetic market data bundle as requested.")
+        index = pd.date_range(end=datetime.now(UTC), periods=500, freq="min")
+        bundle = generate_dummy_data(index)
+    else:
+        end = datetime.now(UTC)
+        start = end - timedelta(minutes=args.lookback_minutes)
+        api_key = args.unusual_whales_key or os.getenv("UNUSUAL_WHALES_API_KEY")
+        if not api_key:
+            raise SystemExit(
+                "Unusual Whales API key missing. Provide --unusual-whales-key or set UNUSUAL_WHALES_API_KEY."
+            )
+        logging.info(
+            "Fetching market data for %s from Unusual Whales (%s minute lookback)",
+            args.symbol,
+            args.lookback_minutes,
+        )
+        bundle = load_market_data_from_unusual_whales(
+            symbol=args.symbol,
+            start=start,
+            end=end,
+            api_key=api_key,
+        )
     config = HurricaneConfig(
         timeframes=[
             TimeframeConfig(name="1m", horizon_minutes=1, abstention_threshold=0.05, lambda_level=0.75),
