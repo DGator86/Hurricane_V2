@@ -1,0 +1,35 @@
+name: Run Tests
+
+on:
+  push:
+    branches: ["main", "work", "**"]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run pytest
+        run: pytest --cov=hurricane_spy --cov-report=xml
+      - name: Run pipeline demo
+        run: python -m hurricane_spy.scripts.run_pipeline --seed 1 --periods 120
+      - name: Run trading harness (dry-run)
+        env:
+          ALPACA_API_KEY: dummy
+          ALPACA_SECRET_KEY: dummy
+        run: python -m hurricane_spy.scripts.run_trading --dry-run --seed 1 --lookback-hours 0.5
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
